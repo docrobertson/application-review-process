@@ -32,6 +32,9 @@ jobs:
         run: |
           for file in converted/*.conf; do
             PAGE_TITLE=$(basename "$file" .conf)
+            
+            # Escape special characters in content for JSON
+            CONTENT=$(jq -Rs '.' < "$file")
 
             # Step 1: Check if the page exists
             PAGE_RESPONSE=$(curl -s -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
@@ -56,7 +59,7 @@ jobs:
                      "version": {"number": "'"$NEW_VERSION"'"},
                      "body": {
                        "storage": {
-                         "value": "'"$(cat "$file")"'",
+                         "value": '"$CONTENT"',
                          "representation": "wiki"
                        }
                      }
@@ -76,7 +79,7 @@ jobs:
                      "space": {"key": "'"$CONFLUENCE_SPACE_KEY"'"},
                      "body": {
                        "storage": {
-                         "value": "'"$(cat "$file")"'",
+                         "value": '"$CONTENT"',
                          "representation": "wiki"
                        }
                      }
