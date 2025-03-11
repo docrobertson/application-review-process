@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Convert Markdown to Confluence Format
+      - name: Convert Markdown to Confluence Wiki Markup
         run: |
           pip install markdown-confluence
           mkdir -p converted
@@ -21,29 +21,64 @@ jobs:
             md2conf -i "$file" -o "converted/$(basename "$file" .md).conf"
           done
 
-      - name: Upload to Confluence
+      - name: Sync Pages with Confluence
         env:
           CONFLUENCE_API_TOKEN: ${{ secrets.CONFLUENCE_API_TOKEN }}
-          CONFLUENCE_SPACE_KEY: "YOUR_SPACE_KEY"
+          CONFLUENCE_SPACE_KEY: ${{ secrets.CONFLUENCE_SPACE_KEY }}
           CONFLUENCE_BASE_URL: "https://docrobertson.atlassian.net/wiki"
-          CONFLUENCE_PARENT_PAGE_ID: "123456789" # Replace with actual parent page ID
+          CONFLUENCE_PARENT_PAGE_ID: ${{ secrets.CONFLUENCE_PARENT_PAGE_ID }}
         run: |
           for file in converted/*.conf; do
             PAGE_TITLE=$(basename "$file" .conf)
-            curl -u "your-email@example.com:$CONFLUENCE_API_TOKEN" \
-                 -X POST \
-                 -H "Content-Type: application/json" \
-                 --data '{
-                   "type": "page",
-                   "title": "'"$PAGE_TITLE"'",
-                   "ancestors": [{"id": "'"$CONFLUENCE_PARENT_PAGE_ID"'"}],
-                   "space": {"key": "'"$CONFLUENCE_SPACE_KEY"'"},
-                   "body": {
-                     "storage": {
-                       "value": "'"$(cat "$file")"'",
-                       "representation": "wiki"
+
+            # Step 1: Check if the page already exists
+            PAGE_RESPONSE=$(curl -s -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
+              -X GET "$CONFLUENCE_BASE_URL/rest/api/content?title=$PAGE_TITLE&spaceKey=$CONFLUENCE_SPACE_KEY&expand=version")
+
+            PAGE_ID=$(echo "$PAGE_RESPONSE" | jq -r '.results[0].id')
+            PAGE_VERSION=$(echo "$PAGE_RESPONSE" | jq -r '.results[0].version.number')
+
+            if [ "$PAGE_ID" != "null" ]; then
+              # Step 2: Update existing page
+              NEW_VERSION=$((PAGE_VERSION + 1))
+              echo "Updating existing page: $PAGE_TITLE (ID: $PAGE_ID, Version: $NEW_VERSION)"
+
+              curl -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
+                   -X PUT \
+                   -H "Content-Type: application/json" \
+                   --data '{
+                     "id": "'"$PAGE_ID"'",
+                     "type": "page",
+                     "title": "'"$PAGE_TITLE"'",
+                     "space": {"key": "'"$CONFLUENCE_SPACE_KEY"'"},
+                     "version": {"number": "'"$NEW_VERSION"'"},
+                     "body": {
+                       "storage": {
+                         "value": "'"$(cat "$file")"'",
+                         "representation": "wiki"
+                       }
                      }
-                   }
-                 }' \
-                 "$CONFLUENCE_BASE_URL/rest/api/content"
+                   }' \
+                   "$CONFLUENCE_BASE_URL/rest/api/content/$PAGE_ID"
+            else
+              # Step 3: Create a new page
+              echo "Creating new page: $PAGE_TITLE"
+
+              curl -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
+                   -X POST \
+                   -H "Content-Type: application/json" \
+                   --data '{
+                     "type": "page",
+                     "title": "'"$PAGE_TITLE"'",
+                     "ancestors": [{"id": "'"$CONFLUENCE_PARENT_PAGE_ID"'"}],
+                     "space": {"key": "'"$CONFLUENCE_SPACE_KEY"'"},
+                     "body": {
+                       "storage": {
+                         "value": "'"$(cat "$file")"'",
+                         "representation": "wiki"
+                       }
+                     }
+                   }' \
+                   "$CONFLUENCE_BASE_URL/rest/api/content"
+            fi
           done
