@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   sync-to-confluence:
@@ -16,11 +16,11 @@ jobs:
       - name: Install Pandoc
         run: sudo apt-get update && sudo apt-get install -y pandoc
 
-      - name: Convert Markdown to Confluence Wiki Markup
+      - name: Convert Markdown to HTML (Confluence Storage Format)
         run: |
           mkdir -p converted
           for file in process-docs/*.md; do
-            pandoc "$file" -f markdown -t mediawiki -o "converted/$(basename "$file" .md).conf"
+            pandoc "$file" -f markdown -t html -o "converted/$(basename "$file" .md).html"
           done
 
       - name: Sync Pages with Confluence
@@ -30,10 +30,10 @@ jobs:
           CONFLUENCE_BASE_URL: "https://docrobertson.atlassian.net/wiki"
           CONFLUENCE_PARENT_PAGE_ID: ${{ secrets.CONFLUENCE_PARENT_PAGE_ID }}
         run: |
-          for file in converted/*.conf; do
-            PAGE_TITLE=$(basename "$file" .conf)
+          for file in converted/*.html; do
+            PAGE_TITLE=$(basename "$file" .html)
             
-            # Escape special characters in content for JSON
+            # Escape special characters for JSON
             CONTENT=$(jq -Rs '.' < "$file")
 
             # Step 1: Check if the page exists
@@ -60,7 +60,7 @@ jobs:
                      "body": {
                        "storage": {
                          "value": '"$CONTENT"',
-                         "representation": "wiki"
+                         "representation": "storage"
                        }
                      }
                    }' \
@@ -80,7 +80,7 @@ jobs:
                      "body": {
                        "storage": {
                          "value": '"$CONTENT"',
-                         "representation": "wiki"
+                         "representation": "storage"
                        }
                      }
                    }' \
