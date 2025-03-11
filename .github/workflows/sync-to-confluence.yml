@@ -30,24 +30,30 @@ jobs:
           CONFLUENCE_BASE_URL: "https://docrobertson.atlassian.net/wiki"
           CONFLUENCE_PARENT_PAGE_ID: ${{ secrets.CONFLUENCE_PARENT_PAGE_ID }}
         run: |
-          for file in converted/*.html; do
-            PAGE_TITLE=$(basename "$file" .html)
+          find converted -name '*.html' -print0 | while IFS= read -r -d '' file; do
+            # Extract the raw title from the filename (removing the .html extension)
+            RAW_TITLE=$(basename "$file" .html)
+            # Convert dashes and underscores to spaces and capitalize each word
+            PAGE_TITLE=$(echo "$RAW_TITLE" | sed 's/-/ /g; s/_/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)}1')
             
-            # Escape special characters for JSON
+            # Escape special characters in the content for JSON
             CONTENT=$(jq -Rs '.' < "$file")
-
-            # Step 1: Check if the page exists
+            
+            # URL-encode the page title to safely use in the API query
+            ENCODED_TITLE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$PAGE_TITLE'''))")
+            
+            # Check if the page already exists in Confluence
             PAGE_RESPONSE=$(curl -s -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
-              -X GET "$CONFLUENCE_BASE_URL/rest/api/content?title=$PAGE_TITLE&spaceKey=$CONFLUENCE_SPACE_KEY&expand=version")
-
+              -X GET "$CONFLUENCE_BASE_URL/rest/api/content?title=$ENCODED_TITLE&spaceKey=$CONFLUENCE_SPACE_KEY&expand=version")
+            
             PAGE_ID=$(echo "$PAGE_RESPONSE" | jq -r '.results[0].id')
             PAGE_VERSION=$(echo "$PAGE_RESPONSE" | jq -r '.results[0].version.number')
-
+            
             if [ "$PAGE_ID" != "null" ]; then
-              # Step 2: Update existing page
+              # Update the existing page
               NEW_VERSION=$((PAGE_VERSION + 1))
               echo "Updating existing page: $PAGE_TITLE (ID: $PAGE_ID, Version: $NEW_VERSION)"
-
+              
               curl -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
                    -X PUT \
                    -H "Content-Type: application/json" \
@@ -56,7 +62,7 @@ jobs:
                      "type": "page",
                      "title": "'"$PAGE_TITLE"'",
                      "space": {"key": "'"$CONFLUENCE_SPACE_KEY"'"},
-                     "version": {"number": "'"$NEW_VERSION"'"},
+                     "version": {"number": '"$NEW_VERSION"'},
                      "body": {
                        "storage": {
                          "value": '"$CONTENT"',
@@ -66,9 +72,9 @@ jobs:
                    }' \
                    "$CONFLUENCE_BASE_URL/rest/api/content/$PAGE_ID"
             else
-              # Step 3: Create a new page
+              # Create a new page under the specified parent
               echo "Creating new page: $PAGE_TITLE"
-
+              
               curl -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
                    -X POST \
                    -H "Content-Type: application/json" \
