@@ -5,3 +5,4 @@
 | Survey | Respondent Name | Optional field for nickname |
 | Feedback | Customer Name | May include initials only |
 | Complaint | Client Name | Verify with account records |
+| Insurance | Applicant Full Name | Check insurance card |
