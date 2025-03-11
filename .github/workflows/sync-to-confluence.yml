@@ -1,10 +1,9 @@
 name: Sync Docs to Confluence
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+  release:
+    types: [published]
+  workflow_dispatch:  # Optional manual trigger
 
 jobs:
   sync-to-confluence:
@@ -20,7 +19,14 @@ jobs:
         run: |
           mkdir -p converted
           for file in process-docs/*.md; do
-            pandoc "$file" -f markdown -t html -o "converted/$(basename "$file" .md).html"
+            FILENAME=$(basename "$file" .md)
+            pandoc "$file" -f markdown -t html -o "converted/$FILENAME.html.tmp"
+            {
+              echo '<div style="max-width: none;">'
+              cat "converted/$FILENAME.html.tmp"
+              echo '</div>'
+            } > "converted/$FILENAME.html"
+            rm "converted/$FILENAME.html.tmp"
           done
 
       - name: Sync Pages with Confluence
@@ -31,29 +37,17 @@ jobs:
           CONFLUENCE_PARENT_PAGE_ID: ${{ secrets.CONFLUENCE_PARENT_PAGE_ID }}
         run: |
           find converted -name '*.html' -print0 | while IFS= read -r -d '' file; do
-            # Extract the raw title from the filename (removing the .html extension)
             RAW_TITLE=$(basename "$file" .html)
-            # Convert dashes and underscores to spaces and capitalize each word
             PAGE_TITLE=$(echo "$RAW_TITLE" | sed 's/-/ /g; s/_/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)}1')
-            
-            # Escape special characters in the content for JSON
             CONTENT=$(jq -Rs '.' < "$file")
-            
-            # URL-encode the page title to safely use in the API query
             ENCODED_TITLE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$PAGE_TITLE'''))")
-            
-            # Check if the page already exists in Confluence
             PAGE_RESPONSE=$(curl -s -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
               -X GET "$CONFLUENCE_BASE_URL/rest/api/content?title=$ENCODED_TITLE&spaceKey=$CONFLUENCE_SPACE_KEY&expand=version")
-            
             PAGE_ID=$(echo "$PAGE_RESPONSE" | jq -r '.results[0].id')
             PAGE_VERSION=$(echo "$PAGE_RESPONSE" | jq -r '.results[0].version.number')
-            
             if [ "$PAGE_ID" != "null" ]; then
-              # Update the existing page
               NEW_VERSION=$((PAGE_VERSION + 1))
               echo "Updating existing page: $PAGE_TITLE (ID: $PAGE_ID, Version: $NEW_VERSION)"
-              
               curl -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
                    -X PUT \
                    -H "Content-Type: application/json" \
@@ -72,9 +66,7 @@ jobs:
                    }' \
                    "$CONFLUENCE_BASE_URL/rest/api/content/$PAGE_ID"
             else
-              # Create a new page under the specified parent
               echo "Creating new page: $PAGE_TITLE"
-              
               curl -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
                    -X POST \
                    -H "Content-Type: application/json" \
