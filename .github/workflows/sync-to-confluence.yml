@@ -13,12 +13,14 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Install Pandoc
+        run: sudo apt-get update && sudo apt-get install -y pandoc
+
       - name: Convert Markdown to Confluence Wiki Markup
         run: |
-          pip install markdown-confluence
           mkdir -p converted
           for file in process-docs/*.md; do
-            md2conf -i "$file" -o "converted/$(basename "$file" .md).conf"
+            pandoc "$file" -f markdown -t mediawiki -o "converted/$(basename "$file" .md).conf"
           done
 
       - name: Sync Pages with Confluence
@@ -31,7 +33,7 @@ jobs:
           for file in converted/*.conf; do
             PAGE_TITLE=$(basename "$file" .conf)
 
-            # Step 1: Check if the page already exists
+            # Step 1: Check if the page exists
             PAGE_RESPONSE=$(curl -s -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
               -X GET "$CONFLUENCE_BASE_URL/rest/api/content?title=$PAGE_TITLE&spaceKey=$CONFLUENCE_SPACE_KEY&expand=version")
 
