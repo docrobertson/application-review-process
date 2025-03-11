@@ -1,0 +1,62 @@
+name: Generate Markdown Table from CSV
+
+on:
+  push:
+    paths:
+      - data/fields.csv
+
+jobs:
+  generate-markdown:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Generate Markdown Table from CSV
+        run: |
+          python3 - << 'EOF'
+          import csv
+          import os
+
+          # Define the CSV input and Markdown output paths
+          input_file = 'data/fields.csv'
+          output_file = 'generated/table.md'
+          
+          # Ensure output directory exists
+          os.makedirs(os.path.dirname(output_file), exist_ok=True)
+          
+          # Read CSV file
+          with open(input_file, newline='') as csvfile:
+              reader = csv.DictReader(csvfile)
+              headers = reader.fieldnames
+              rows = list(reader)
+          
+          # Build the Markdown table
+          header_line = "| " + " | ".join(headers) + " |"
+          separator_line = "| " + " | ".join(["---"] * len(headers)) + " |"
+          table_lines = [header_line, separator_line]
+          for row in rows:
+              # Make sure to get the value for each header
+              row_line = "| " + " | ".join(row.get(h, '') for h in headers) + " |"
+              table_lines.append(row_line)
+          
+          markdown_content = "\n".join(table_lines)
+          
+          # Write the Markdown table to the output file
+          with open(output_file, 'w') as f:
+              f.write(markdown_content)
+          print(f"Markdown table generated in {output_file}")
+          EOF
+
+      - name: Commit and Push Changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add generated/table.md
+          # Only commit if there are changes
+          if ! git diff --quiet --cached; then
+            git commit -m "Update generated markdown table from CSV"
+            git push
+          else
+            echo "No changes to commit."
+          fi
