@@ -1,0 +1,49 @@
+name: Sync Docs to Confluence
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  sync-to-confluence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Convert Markdown to Confluence Format
+        run: |
+          pip install markdown-confluence
+          mkdir -p converted
+          for file in process-docs/*.md; do
+            md2conf -i "$file" -o "converted/$(basename "$file" .md).conf"
+          done
+
+      - name: Upload to Confluence
+        env:
+          CONFLUENCE_API_TOKEN: ${{ secrets.CONFLUENCE_API_TOKEN }}
+          CONFLUENCE_SPACE_KEY: "YOUR_SPACE_KEY"
+          CONFLUENCE_BASE_URL: "https://docrobertson.atlassian.net/wiki"
+          CONFLUENCE_PARENT_PAGE_ID: "123456789" # Replace with actual parent page ID
+        run: |
+          for file in converted/*.conf; do
+            PAGE_TITLE=$(basename "$file" .conf)
+            curl -u "your-email@example.com:$CONFLUENCE_API_TOKEN" \
+                 -X POST \
+                 -H "Content-Type: application/json" \
+                 --data '{
+                   "type": "page",
+                   "title": "'"$PAGE_TITLE"'",
+                   "ancestors": [{"id": "'"$CONFLUENCE_PARENT_PAGE_ID"'"}],
+                   "space": {"key": "'"$CONFLUENCE_SPACE_KEY"'"},
+                   "body": {
+                     "storage": {
+                       "value": "'"$(cat "$file")"'",
+                       "representation": "wiki"
+                     }
+                   }
+                 }' \
+                 "$CONFLUENCE_BASE_URL/rest/api/content"
+          done
