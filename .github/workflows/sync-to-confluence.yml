@@ -31,10 +31,8 @@ jobs:
           CONFLUENCE_PARENT_PAGE_ID: ${{ secrets.CONFLUENCE_PARENT_PAGE_ID }}
         run: |
           for file in converted/*.html; do
-            # Convert filename to a readable title (replace dashes/underscores with spaces, capitalize)
-            RAW_TITLE=$(basename "$file" .html)
-            PAGE_TITLE=$(echo "$RAW_TITLE" | sed 's/-/ /g; s/_/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)}1')
-
+            PAGE_TITLE=$(basename "$file" .html)
+            
             # Escape special characters for JSON
             CONTENT=$(jq -Rs '.' < "$file")
 
@@ -68,7 +66,7 @@ jobs:
                    }' \
                    "$CONFLUENCE_BASE_URL/rest/api/content/$PAGE_ID"
             else
-              # Step 3: Create a new page under the specified parent
+              # Step 3: Create a new page
               echo "Creating new page: $PAGE_TITLE"
 
               curl -u "docrobertson@me.com:$CONFLUENCE_API_TOKEN" \
